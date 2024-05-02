@@ -116,7 +116,7 @@ extern "C" int sqlite3_sqlitemcuuid_init(
     const char *sql_stmt = "CREATE TABLE IF NOT EXISTS mc_uuid_v1 ("
                            "uuid TEXT PRIMARY KEY,"
                            "name TEXT NOT NULL,"
-                           "created_At INTEGER NOT NULL);";
+                           "created_at INTEGER NOT NULL);";
     char *err_msg = nullptr;
     auto err = sqlite3_exec(db, sql_stmt, nullptr, nullptr, &err_msg);
     if (err != SQLITE_OK) {
