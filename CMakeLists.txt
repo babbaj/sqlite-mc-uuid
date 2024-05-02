@@ -10,7 +10,7 @@ pkg_check_modules(CURL IMPORTED_TARGET libcurl)
 pkg_check_modules(JSON IMPORTED_TARGET json-c)
 
 add_library(sqlite_mc_uuid SHARED library.cpp)
-target_link_libraries(sqlite_mc_uuid PRIVATE PkgConfig::SQLITE)
+target_include_directories(sqlite_mc_uuid PRIVATE ${SQLITE_INCLUDE_DIRS})
 target_link_libraries(sqlite_mc_uuid PRIVATE PkgConfig::CURL)
 target_link_libraries(sqlite_mc_uuid PRIVATE PkgConfig::JSON)
 

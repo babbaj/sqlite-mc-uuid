@@ -6,9 +6,8 @@
 
 #include <curl/curl.h>
 #include <json-c/json.h>
-/* Add your header comment here */
-#include <sqlite3ext.h> /* Do not use <sqlite3.h>! */
 
+#include <sqlite3ext.h> /* Do not use <sqlite3.h>! */
 SQLITE_EXTENSION_INIT1
 
 /* Insert your extension code here */
@@ -46,6 +45,17 @@ std::optional<std::string> fetch_name(const char* uuid) {
     }
 }
 
+void update_cache(sqlite3* db, const char* uuid, const char* name, int64_t created_at) {
+    const char *sql = "INSERT OR REPLACE INTO mc_uuid_v1(uuid, name, created_at) VALUES(?, ?, ?)";
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, uuid, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 3, created_at);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+}
+
 void uuid_lookup_function(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
     assert(argc == 1);
     sqlite3_value* arg1 = argv[0];
@@ -53,37 +63,41 @@ void uuid_lookup_function(sqlite3_context* ctx, int argc, sqlite3_value** argv) 
 
     sqlite3* db = sqlite3_context_db_handle(ctx);
 
-    sqlite3_stmt *stmt;
     const char *sql = "SELECT name,created_at FROM mc_uuid_v1 WHERE uuid = ?;";
+    sqlite3_stmt *stmt;
     sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, uuid, -1, SQLITE_TRANSIENT);
 
+    int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    constexpr int64_t millis_in_hour = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::hours{1}).count();
     // Execute SQL statement
     auto result = sqlite3_step(stmt);
     if (result == SQLITE_ROW) {
         auto cached_name = (const char*) sqlite3_column_text(stmt, 0);
         int64_t created_at = sqlite3_column_int64(stmt, 1);
-        int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        constexpr int64_t millis_in_hour = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::hours{1}).count();
         if (now - created_at < millis_in_hour) {
             sqlite3_result_text(ctx, cached_name, strlen(cached_name), SQLITE_TRANSIENT);
         } else {
-            auto name = fetch_name(uuid); // TODO: insert into cache
+            // don't trust the cache
+            auto name = fetch_name(uuid);
             if (name) {
+                update_cache(db, uuid, name->c_str(), created_at);
                 sqlite3_result_text(ctx, name->c_str(), name->length(), SQLITE_TRANSIENT);
             } else {
+                // request failed so just trust the cache
                 sqlite3_result_text(ctx, cached_name, strlen(cached_name), SQLITE_TRANSIENT);
             }
         }
     } else {
-        auto name = fetch_name(uuid); // TODO: ^
+        auto name = fetch_name(uuid);
         if (name) {
+            update_cache(db, uuid, name->c_str(), now);
             sqlite3_result_text(ctx, name->c_str(), name->length(), SQLITE_TRANSIENT);
         } else {
             auto msg = "Failed to do http request";
             sqlite3_result_error(ctx, msg, strlen(msg));
         }
     }
-    // Finalize statement
     sqlite3_finalize(stmt);
 }
 
@@ -91,12 +105,6 @@ void uuid_lookup_function(sqlite3_context* ctx, int argc, sqlite3_value** argv) 
 #ifdef _WIN32
 __declspec(dllexport)
 #endif
-/* TODO: Change the entry point name so that "extension" is replaced by
-** text derived from the shared library filename as follows:  Copy every
-** ASCII alphabetic character from the filename after the last "/" through
-** the next following ".", converting each character to lowercase, and
-** discarding the first three characters if they are "lib".
-*/
 extern "C" int sqlite3_sqlitemcuuid_init(
         sqlite3 *db,
         char **pzErrMsg,
@@ -116,19 +124,12 @@ extern "C" int sqlite3_sqlitemcuuid_init(
         sqlite3_free(err_msg);
         return SQLITE_ERROR;
     }
-    puts("YAY!!!");
 
     err = sqlite3_create_function_v2(db, "username", 1, SQLITE_UTF8, nullptr, uuid_lookup_function, nullptr, nullptr, nullptr);
     if (err != SQLITE_OK) {
         *pzErrMsg = sqlite3_mprintf("Failed to create username function: %s", sqlite3_errstr(err));
         return SQLITE_ERROR;
     }
-    /* Insert here calls to
-    **     sqlite3_create_function_v2(),
-    **     sqlite3_create_collation_v2(),
-    **     sqlite3_create_module_v2(), and/or
-    **     sqlite3_vfs_register()
-    ** to register the new features that your extension adds.
-    */
+
     return rc;
 }
