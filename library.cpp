@@ -26,6 +26,34 @@ size_t write_callback(char* data, size_t size, size_t nmemb, std::string* str) {
     return size * nmemb;
 }
 
+bool isValidHexChar(char c) {
+    return ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
+}
+
+std::optional<std::string> normalize_uuid(std::string_view uuid) {
+    std::string out;
+    out.reserve(36);
+    int hyphens = 0;
+    int hex_chars = 0;
+    for (char c : uuid) {
+        if (c == '-') {
+            hyphens++;
+            if (hyphens > 4) return {}; // Too many hyphens
+        }
+        else if (isValidHexChar(c)) {
+            hex_chars++;
+            if (hex_chars > 32) return {}; // Too many hex chars
+            out.push_back(tolower(c));
+            if (hex_chars == 8 || hex_chars == 12 || hex_chars == 16 || hex_chars == 20) {
+                out.push_back('-');
+            }
+        } else {
+            return {}; // invalid uuid
+        }
+    }
+    return out;
+}
+
 std::optional<std::string> fetch_name(const char* uuid) {
     CURL *curl = curl_easy_init();
     assert(curl);
@@ -59,14 +87,20 @@ void update_cache(sqlite3* db, const char* uuid, const char* name, int64_t creat
 void uuid_lookup_function(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
     assert(argc == 1);
     sqlite3_value* arg1 = argv[0];
-    const char* uuid = reinterpret_cast<const char *>(sqlite3_value_text(arg1));
+    const char* input = reinterpret_cast<const char *>(sqlite3_value_text(arg1));
+    auto uuid = normalize_uuid(input);
+    if (!uuid) {
+        auto msg = "Invalid uuid";
+        sqlite3_result_error(ctx, msg, strlen(msg));
+        return;
+    }
 
     sqlite3* db = sqlite3_context_db_handle(ctx);
 
     const char *sql = "SELECT name,created_at FROM mc_uuid_v1 WHERE uuid = ?;";
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
-    sqlite3_bind_text(stmt, 1, uuid, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 1, uuid->c_str(), -1, SQLITE_TRANSIENT);
 
     int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     constexpr int64_t millis_in_hour = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::hours{1}).count();
@@ -79,9 +113,9 @@ void uuid_lookup_function(sqlite3_context* ctx, int argc, sqlite3_value** argv) 
             sqlite3_result_text(ctx, cached_name, strlen(cached_name), SQLITE_TRANSIENT);
         } else {
             // don't trust the cache
-            auto name = fetch_name(uuid);
+            auto name = fetch_name(uuid->c_str());
             if (name) {
-                update_cache(db, uuid, name->c_str(), created_at);
+                update_cache(db, uuid->c_str(), name->c_str(), created_at);
                 sqlite3_result_text(ctx, name->c_str(), name->length(), SQLITE_TRANSIENT);
             } else {
                 // request failed so just trust the cache
@@ -89,9 +123,9 @@ void uuid_lookup_function(sqlite3_context* ctx, int argc, sqlite3_value** argv) 
             }
         }
     } else {
-        auto name = fetch_name(uuid);
+        auto name = fetch_name(uuid->c_str());
         if (name) {
-            update_cache(db, uuid, name->c_str(), now);
+            update_cache(db, uuid->c_str(), name->c_str(), now);
             sqlite3_result_text(ctx, name->c_str(), name->length(), SQLITE_TRANSIENT);
         } else {
             auto msg = "Failed to do http request";
