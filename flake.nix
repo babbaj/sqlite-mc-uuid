@@ -13,7 +13,6 @@
     in {
       devShells.default = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [
-          clang_16
           pkg-config
           cmake
           ninja
@@ -23,11 +22,6 @@
           curl.dev
           json_c.dev
         ];
-
-        shellHook = ''
-          export CC=${pkgs.clang_16}/bin/clang
-          export CXX=${pkgs.clang_16}/bin/clang++
-        '';
       };
     });
 }
