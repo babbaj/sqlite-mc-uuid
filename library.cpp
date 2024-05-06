@@ -207,7 +207,7 @@ extern "C" int sqlite3_sqlitemcuuid_init(
         return err;
     }
 
-    int err = sqlite3_create_function_v2(db, "username", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, nullptr, uuid_lookup_function, nullptr, nullptr, nullptr);
+    int err = sqlite3_create_function_v2(db, "mc_username", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, nullptr, uuid_lookup_function, nullptr, nullptr, nullptr);
     if (err != SQLITE_OK) {
         *pzErrMsg = sqlite3_mprintf("Failed to create username function: %s", sqlite3_errstr(err));
         return SQLITE_ERROR;
