@@ -5,7 +5,7 @@ All api calls are cached and considered valid for 1 hour. Naturally this cache i
 
 ### UUID -> USERNAME
 ```
-sqlite> select username('0f75a81d-70e5-43c5-b892-f33c524284f2');
+sqlite> select mc_username('0f75a81d-70e5-43c5-b892-f33c524284f2');
 popbob
 ```
 
