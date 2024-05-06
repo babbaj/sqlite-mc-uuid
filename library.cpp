@@ -36,6 +36,7 @@ std::optional<std::string> normalize_uuid(std::string_view uuid) {
             return {}; // invalid uuid
         }
     }
+    if (hex_chars < 32) return {};
     return out;
 }
 
@@ -177,7 +178,7 @@ int init_cache(sqlite3 *db, char** pzErrMsg) {
        "CREATE TABLE IF NOT EXISTS mc_profile_cache ("
        "uuid TEXT PRIMARY KEY,"
        "name COLLATE NOCASE NOT NULL UNIQUE,"
-       "created_at INTEGER NOT NULL);",
+       "created_at INTEGER NOT NULL)",
        "CREATE UNIQUE INDEX IF NOT EXISTS mc_profile_cache_by_name ON mc_profile_cache (name)",
     };
     for (const char* stmt : statements) {
