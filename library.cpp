@@ -44,7 +44,6 @@ struct Profile {
     std::string name;
 };
 
-
 std::optional<Profile> parse_profile(const char* json_str) {
     json_object *json = json_tokener_parse(json_str);
     json_object *name_obj{};
@@ -94,7 +93,7 @@ std::optional<Profile> fetch_profile_by_name(const char* name) {
 }
 
 void update_cache(sqlite3* db, const char* uuid, const char* name, int64_t created_at) {
-    const char *sql = "INSERT OR REPLACE INTO mc_uuid_cache(uuid, name, created_at) VALUES(?, ?, ?)";
+    const char *sql = "INSERT OR REPLACE INTO mc_profile_cache(uuid, name, created_at) VALUES(?, ?, ?)";
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
     sqlite3_bind_text(stmt, 1, uuid, -1, SQLITE_TRANSIENT);
@@ -109,8 +108,8 @@ void lookup0(sqlite3_context* ctx, const char* argument, bool uuid) {
 
     auto fetch = uuid ? fetch_profile_by_uuid : fetch_profile_by_name;
     const char *sql = uuid ?
-            "SELECT name,uuid,created_at FROM mc_uuid_cache WHERE uuid = ?"
-            : "SELECT name,uuid,created_at FROM mc_uuid_cache WHERE name = ?";
+            "SELECT name,uuid,created_at FROM mc_profile_cache WHERE uuid = ?"
+            : "SELECT name,uuid,created_at FROM mc_profile_cache WHERE name = ?";
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
     sqlite3_bind_text(stmt, 1, argument, -1, SQLITE_TRANSIENT);
@@ -175,17 +174,17 @@ void username_lookup_function(sqlite3_context* ctx, int argc, sqlite3_value** ar
 
 int init_cache(sqlite3 *db, char** pzErrMsg) {
     std::array<const char*, 2> statements = {
-       "CREATE TABLE IF NOT EXISTS mc_uuid_cache ("
+       "CREATE TABLE IF NOT EXISTS mc_profile_cache ("
        "uuid TEXT PRIMARY KEY,"
        "name COLLATE NOCASE NOT NULL UNIQUE,"
        "created_at INTEGER NOT NULL);",
-       "CREATE UNIQUE INDEX IF NOT EXISTS mc_uuid_cache_by_name ON mc_uuid_cache (name)",
+       "CREATE UNIQUE INDEX IF NOT EXISTS mc_profile_cache_by_name ON mc_profile_cache (name)",
     };
     for (const char* stmt : statements) {
         char *err_msg = nullptr;
         int err = sqlite3_exec(db, stmt, nullptr, nullptr, &err_msg);
         if (err != SQLITE_OK) {
-            *pzErrMsg = sqlite3_mprintf("Failed to create mc_uuid_cache: %s", err_msg);
+            *pzErrMsg = sqlite3_mprintf("Failed to create mc_profile_cache: %s", err_msg);
             sqlite3_free(err_msg);
             return SQLITE_ERROR;
         }
@@ -216,7 +215,7 @@ extern "C" int sqlite3_sqlitemcuuid_init(
 
     err = sqlite3_create_function_v2(db, "mc_uuid", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, nullptr, username_lookup_function, nullptr, nullptr, nullptr);
     if (err != SQLITE_OK) {
-        *pzErrMsg = sqlite3_mprintf("Failed to create username function: %s", sqlite3_errstr(err));
+        *pzErrMsg = sqlite3_mprintf("Failed to create mc_uuid function: %s", sqlite3_errstr(err));
         return SQLITE_ERROR;
     }
 
