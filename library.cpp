@@ -65,7 +65,7 @@ size_t write_callback(char* data, size_t size, size_t nmemb, std::string* str) {
     return size * nmemb;
 }
 
-std::optional<Profile> fetch_profile(const char* url) {
+std::optional<Profile> fetch_profile(const char* url, std::string* error_out) {
     CURL *curl = curl_easy_init();
     assert(curl);
     curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -75,22 +75,27 @@ std::optional<Profile> fetch_profile(const char* url) {
     char error[CURL_ERROR_SIZE];
     curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, &error);
     CURLcode res = curl_easy_perform(curl);
+    long http_code;
+    curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
     if (res != CURLE_OK) {
-        puts(error);
+        *error_out = error;
         return {};
-    } else {
+    } else if (http_code == 200) {
         return parse_profile(response.c_str());
+    } else {
+        *error_out = "Mojang API returned http code " + std::to_string(http_code);
+        return {};
     }
 }
 
-std::optional<Profile> fetch_profile_by_uuid(const char* uuid) {
+std::optional<Profile> fetch_profile_by_uuid(const char* uuid, std::string* error) {
     std::string url = std::string{"https://sessionserver.mojang.com/session/minecraft/profile/"} + uuid;
-    return fetch_profile(url.c_str());
+    return fetch_profile(url.c_str(), error);
 }
 
-std::optional<Profile> fetch_profile_by_name(const char* name) {
+std::optional<Profile> fetch_profile_by_name(const char* name, std::string* error) {
     std::string url = std::string{"https://api.mojang.com/users/profiles/minecraft/"} + name;
-    return fetch_profile(url.c_str());
+    return fetch_profile(url.c_str(), error);
 }
 
 void update_cache(sqlite3* db, const char* uuid, const char* name, int64_t created_at) {
@@ -127,8 +132,9 @@ void lookup0(sqlite3_context* ctx, const char* argument, bool uuid) {
         if (now - created_at < millis_in_hour) {
             sqlite3_result_text(ctx, cached_result, strlen(cached_result), SQLITE_TRANSIENT);
         } else {
+            std::string error;
             // don't trust the cache
-            auto profile = fetch(argument);
+            auto profile = fetch(argument, &error);
             if (profile) {
                 update_cache(db, profile->uuid.c_str(), profile->name.c_str(), created_at);
                 auto& result = uuid ? profile->name : profile->uuid;
@@ -139,14 +145,14 @@ void lookup0(sqlite3_context* ctx, const char* argument, bool uuid) {
             }
         }
     } else {
-        auto profile = fetch(argument);
+        std::string error;
+        auto profile = fetch(argument, &error);
         if (profile) {
             update_cache(db, profile->uuid.c_str(), profile->name.c_str(), now);
             auto& result = uuid ? profile->name : profile->uuid;
             sqlite3_result_text(ctx, result.c_str(), result.length(), SQLITE_TRANSIENT);
         } else {
-            auto msg = "Failed to do http request";
-            sqlite3_result_error(ctx, msg, strlen(msg));
+            sqlite3_result_error(ctx, error.c_str(), error.length());
         }
     }
     sqlite3_finalize(stmt);
