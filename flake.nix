@@ -23,5 +23,28 @@
           json_c.dev
         ];
       };
+
+      packages.default = pkgs.stdenv.mkDerivation {
+        pname = "sqlite-mc-uuid";
+        version = "1.0.0";
+
+        src = ./.;
+
+        nativeBuildInputs = with pkgs; [
+          pkg-config
+          cmake
+          ninja
+        ];
+
+        buildInputs = with pkgs; [
+          sqlite
+          curl
+          json_c
+        ];
+
+        installPhase = ''
+          install -D ./libsqlite_mc_uuid.so $out/lib/libsqlite_mc_uuid.so
+        '';
+      };
     });
 }
